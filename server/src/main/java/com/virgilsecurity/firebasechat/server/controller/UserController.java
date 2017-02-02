@@ -111,7 +111,7 @@ public class UserController {
 	 * @return The custom token.
 	 */
 	private String authenticateWithFirebase(String email) {
-		final Task<String> task = FirebaseAuth.getInstance().createCustomToken(email, additionalClaims)
+		final Task<String> task = FirebaseAuth.getInstance().createCustomToken(email)
 				.addOnSuccessListener(new OnSuccessListener<String>() {
 
 					public void onSuccess(String customToken) {
