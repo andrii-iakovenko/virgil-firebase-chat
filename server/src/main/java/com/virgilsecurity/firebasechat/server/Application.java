@@ -1,0 +1,78 @@
+package com.virgilsecurity.firebasechat.server;
+
+import java.io.FileInputStream;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.util.StringUtils;
+
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.FirebaseOptions;
+import com.google.firebase.auth.FirebaseCredentials;
+import com.virgilsecurity.sdk.client.VirgilClient;
+import com.virgilsecurity.sdk.client.utils.ConvertionUtils;
+import com.virgilsecurity.sdk.crypto.Crypto;
+import com.virgilsecurity.sdk.crypto.PrivateKey;
+import com.virgilsecurity.sdk.crypto.VirgilCrypto;
+
+@SpringBootApplication
+public class Application {
+	private static final Logger log = LoggerFactory.getLogger(Application.class);
+
+	public static void main(String[] args) {
+		initFirebase();
+		SpringApplication.run(Application.class, args);
+	}
+
+	private static void initFirebase() {
+		String serviceAccountKeyPath = System.getProperty("serviceAccountKey");
+		if (StringUtils.isEmpty(serviceAccountKeyPath)) {
+			throw new RuntimeException("Service account key is not defined. Use `serviceAccountKey` parameter");
+		}
+		String databaseUrl = System.getProperty("databaseUrl");
+		if (StringUtils.isEmpty(databaseUrl)) {
+			throw new RuntimeException("Firebase database URL is not defined. Use `databaseUrl` parameter");
+		}
+		try {
+			FileInputStream serviceAccount = new FileInputStream(serviceAccountKeyPath);
+			FirebaseOptions options = new FirebaseOptions.Builder()
+					.setCredential(FirebaseCredentials.fromCertificate(serviceAccount)).setDatabaseUrl(databaseUrl)
+					.build();
+
+			FirebaseApp.initializeApp(options);
+		} catch (Exception e) {
+			log.error("Firebase Admin SDK is not initalized", e);
+		}
+	}
+
+	@Bean
+	public Crypto crypto() {
+		return new VirgilCrypto();
+	}
+
+	@Bean
+	@Autowired
+	public PrivateKey appKey(@Value("#{systemProperties['appKey']}") String appKey,
+			@Value("#{systemProperties['appKeyPwd']}") String appKeyPwd, Crypto crypto) {
+		if (StringUtils.isEmpty(appKey)) {
+			throw new RuntimeException("Application key is not defined");
+		}
+		if (StringUtils.isEmpty(appKeyPwd)) {
+			throw new RuntimeException("Application key password is not defined");
+		}
+		PrivateKey key = crypto.importPrivateKey(ConvertionUtils.base64ToBytes(appKey), appKeyPwd);
+		return key;
+	}
+
+	@Bean
+	public VirgilClient virgilClient(@Value("#{systemProperties['accessToken']}") String accessToken) {
+		VirgilClient client = new VirgilClient(accessToken);
+		return client;
+	}
+
+}

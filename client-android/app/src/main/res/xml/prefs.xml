@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <EditTextPreference
+        android:key="virgil_token"
+        android:title="@string/virgil_token"
+        android:defaultValue="AT.6a866aab0704ad0634faa577549b4b70b01654782b06e26e181dc30507a5108e"/>
+
+    <EditTextPreference
+        android:key="base_url"
+        android:title="@string/server_base_url"
+        android:defaultValue="http://192.168.1.107:8080/"/>
+</PreferenceScreen>

@@ -17,6 +17,7 @@ package com.google.firebase.codelab.friendlychat;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -25,6 +26,8 @@ import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.Toast;
 
 import com.google.android.gms.auth.api.Auth;
@@ -43,6 +46,7 @@ import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.auth.GoogleAuthProvider;
 import com.google.firebase.codelab.friendlychat.model.User;
 import com.google.firebase.codelab.friendlychat.utils.Constants;
+import com.google.firebase.codelab.friendlychat.utils.HttpUtils;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
@@ -60,16 +64,26 @@ import com.virgilsecurity.sdk.crypto.KeyPair;
 import com.virgilsecurity.sdk.crypto.PrivateKey;
 import com.virgilsecurity.sdk.crypto.VirgilCrypto;
 
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URL;
+import java.util.HashMap;
+import java.util.Map;
+
 public class SignInActivity extends AppCompatActivity implements GoogleApiClient.OnConnectionFailedListener,
         View.OnClickListener {
 
     private static final String TAG = "SignInActivity";
-    private static final int RC_SIGN_IN = 9001;
-    private SignInButton mSignInButton;
 
-    private GoogleApiClient mGoogleApiClient;
+    private EditText mEmail;
+    private EditText mPassword;
+    private Button mSignInButton;
+
     private FirebaseAuth mFirebaseAuth;
-    private DatabaseReference mFirebaseDatabaseReference;
+
+    private SharedPreferences mSharedPreferences;
+    private String mBaseURL;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,25 +92,19 @@ public class SignInActivity extends AppCompatActivity implements GoogleApiClient
 
         // Intialize preferences
         PreferenceManager.setDefaultValues(getApplicationContext(), R.xml.prefs, true);
+        mSharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        mBaseURL = mSharedPreferences.getString(Constants.BASE_URL, "");
 
         // Assign fields
-        mSignInButton = (SignInButton) findViewById(R.id.sign_in_button);
+        mEmail = (EditText) findViewById(R.id.email);
+        mPassword = (EditText) findViewById(R.id.password);
+        mSignInButton = (Button) findViewById(R.id.sign_in_button);
 
         // Set click listeners
         mSignInButton.setOnClickListener(this);
 
-        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestIdToken(getString(R.string.default_web_client_id))
-                .requestEmail()
-                .build();
-        mGoogleApiClient = new GoogleApiClient.Builder(this)
-                .enableAutoManage(this /* FragmentActivity */, this /* OnConnectionFailedListener */)
-                .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
-                .build();
-
         // Initialize FirebaseAuth
         mFirebaseAuth = FirebaseAuth.getInstance();
-        mFirebaseDatabaseReference = FirebaseDatabase.getInstance().getReference();
     }
 
     private void handleFirebaseAuthResult(AuthResult authResult) {
@@ -122,32 +130,94 @@ public class SignInActivity extends AppCompatActivity implements GoogleApiClient
     }
 
     private void signIn() {
-        Intent signInIntent = Auth.GoogleSignInApi.getSignInIntent(mGoogleApiClient);
-        startActivityForResult(signInIntent, RC_SIGN_IN);
-    }
-
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-
-        // Result returned from launching the Intent from GoogleSignInApi.getSignInIntent(...);
-        if (requestCode == RC_SIGN_IN) {
-            GoogleSignInResult result = Auth.GoogleSignInApi.getSignInResultFromIntent(data);
-            if (result.isSuccess()) {
-                // Google Sign In was successful, authenticate with Firebase
-                GoogleSignInAccount account = result.getSignInAccount();
-                firebaseAuthWithGoogle(account);
-            } else {
-                // Google Sign In failed
-                Log.e(TAG, "Google Sign In failed. " + result.getStatus().getStatusCode());
-            }
+        String email = mEmail.getText().toString();
+        String password = mPassword.getText().toString();
+        String privateKeyBase64String = mSharedPreferences.getString(Constants.PRIVATE_KEY + email, "");
+        if (StringUtils.isBlank(privateKeyBase64String)) {
+            // Registration
+            register(email, password);
+        } else {
+            // Login
+            login(email, password);
         }
     }
 
-    private void firebaseAuthWithGoogle(GoogleSignInAccount acct) {
-        Log.d(TAG, "firebaseAuthWithGoogle:" + acct.getId());
-        AuthCredential credential = GoogleAuthProvider.getCredential(acct.getIdToken(), null);
-        mFirebaseAuth.signInWithCredential(credential)
+    private void register(final String email, final String password) {
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                // Generate new key pair for user
+                Crypto crypto = new VirgilCrypto();
+                KeyPair keyPair = crypto.generateKeys();
+
+                try {
+                    // Register new user on chat server
+                    Log.d(TAG, "Connect to server for signup");
+                    Uri uri = Uri.parse(mBaseURL + "/signup").buildUpon()
+                            .appendQueryParameter("email", email)
+                            .appendQueryParameter("password", password)
+                            .appendQueryParameter("key", ConvertionUtils.toBase64String(crypto.exportPrivateKey(keyPair.getPrivateKey())))
+                            .build();
+
+                    URL url = new URL(uri.toString());
+                    String customToken = HttpUtils.execute(url, "GET", null, null, String.class);
+                    Log.d(TAG, "Got custom token: " + customToken);
+
+                    // Save private key for future use
+                    mSharedPreferences.edit()
+                            .putString(Constants.PRIVATE_KEY + email, ConvertionUtils.toBase64String(crypto.exportPrivateKey(keyPair.getPrivateKey())))
+                            .commit();
+
+                    Bundle bundle = new Bundle();
+                    bundle.putString(Constants.CUSTOM_TOKEN, customToken);
+                    sendMessageToHandler(Constants.EVENTS.REGISTRATION_PASSED, bundle);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error while registering new user", e);
+
+                    Bundle bundle = new Bundle();
+                    bundle.putString(Constants.ERROR_MESSAGE, "Registration failed: " + e.getMessage());
+                    sendMessageToHandler(Constants.EVENTS.REGISTRATION_FAILED, bundle);
+                }
+            }
+        });
+        thread.start();
+    }
+
+    private void login(final String email, final String password) {
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // Log in on chat server
+                    Log.d(TAG, "Connect to server for login");
+                    Uri uri = Uri.parse(mBaseURL + "/login").buildUpon()
+                            .appendQueryParameter("email", email)
+                            .appendQueryParameter("password", password)
+                            .build();
+
+                    URL url = new URL(uri.toString());
+                    String customToken = HttpUtils.execute(url, "GET", null, null, String.class);
+                    Log.d(TAG, "Got custom token: " + customToken);
+
+                    Bundle bundle = new Bundle();
+                    bundle.putString(Constants.CUSTOM_TOKEN, customToken);
+                    sendMessageToHandler(Constants.EVENTS.LOGIN_PASSED, bundle);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error while login", e);
+
+                    Bundle bundle = new Bundle();
+                    bundle.putString(Constants.ERROR_MESSAGE, "Login failed: " + e.getMessage());
+                    sendMessageToHandler(Constants.EVENTS.LOGIN_FAILED, bundle);
+                }
+            }
+
+        });
+        thread.start();
+    }
+
+    private void firebaseAuthWithCustomToken(String customToken) {
+        Log.d(TAG, "firebaseAuthWithToken:" + customToken);
+        mFirebaseAuth.signInWithCustomToken(customToken)
                 .addOnCompleteListener(this, new OnCompleteListener<AuthResult>() {
                     @Override
                     public void onComplete(@NonNull Task<AuthResult> task) {
@@ -161,84 +231,10 @@ public class SignInActivity extends AppCompatActivity implements GoogleApiClient
                             Toast.makeText(SignInActivity.this, "Authentication failed.",
                                     Toast.LENGTH_SHORT).show();
                         } else {
-                            registerUser();
+                            sendMessageToHandler(Constants.EVENTS.FIREBASE_SIGNIN_PASSED);
                         }
                     }
                 });
-    }
-
-    private void saveUser() {
-        final FirebaseUser firebaseUser = mFirebaseAuth.getCurrentUser();
-        Query query = mFirebaseDatabaseReference.child(Constants.USERS_CHILD).orderByChild("email").equalTo(firebaseUser.getEmail()).limitToFirst(1);
-        query.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(DataSnapshot dataSnapshot) {
-                if (dataSnapshot.exists()) {
-                    // User is already registered in database
-                } else {
-                    // Register new user
-                    User user = new User(firebaseUser.getEmail(), firebaseUser.getDisplayName());
-                    mFirebaseDatabaseReference.child(Constants.USERS_CHILD).push().setValue(user).addOnCompleteListener(new OnCompleteListener<Void>() {
-                        @Override
-                        public void onComplete(@NonNull Task<Void> task) {
-                            startMainActivity();
-                        }
-                    });
-                }
-            }
-
-            @Override
-            public void onCancelled(DatabaseError databaseError) {
-
-            }
-        });
-    }
-
-    private void registerUser() {
-        final String email = mFirebaseAuth.getCurrentUser().getEmail();
-        final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-        String privateKeyBase64String = prefs.getString(Constants.PRIVATE_KEY + email, "");
-        if (StringUtils.isBlank(privateKeyBase64String)) {
-            Thread backgrond = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    // Generate new key pair for user
-                    Crypto crypto = new VirgilCrypto();
-                    KeyPair keyPair = crypto.generateKeys();
-
-                    String virgilToken = prefs.getString(Constants.VIRGIL_TOKEN, "");
-                    String appId = prefs.getString(Constants.VIRGIL_APP_ID, "");
-                    String appKeyStr = prefs.getString(Constants.VIRGIL_APP_KEY, "");
-                    String appKeyPwd = prefs.getString(Constants.VIRGIL_APP_KEY_PWD, "");
-                    PrivateKey appKey = crypto.importPrivateKey(ConvertionUtils.base64ToArray(appKeyStr), appKeyPwd);
-                    VirgilClient virgilClient = new VirgilClient(virgilToken);
-
-                    // Create new Virgil Card
-                    CreateCardRequest createCardRequest = new CreateCardRequest(email, Constants.IDENTITY_TYPE, crypto.exportPublicKey(keyPair.getPublicKey()));
-
-                    RequestSigner requestSigner = new RequestSigner(crypto);
-
-                    requestSigner.selfSign(createCardRequest, keyPair.getPrivateKey());
-                    requestSigner.authoritySign(createCardRequest, appId, appKey);
-
-                    try {
-                        virgilClient.createCard(createCardRequest);
-
-                        prefs.edit().putString(Constants.PRIVATE_KEY + email, ConvertionUtils.toBase64String(crypto.exportPrivateKey(keyPair.getPrivateKey()))).commit();
-
-                        sendMessageToHandler(Constants.EVENTS.SIGNING_PASSED);
-                    } catch (VirgilServiceException e) {
-                        Log.e(TAG, "register Virgil Card", e);
-
-                        sendMessageToHandler(Constants.EVENTS.SIGNING_FAILED);
-                    }
-                }
-            });
-            backgrond.start();
-
-        } else {
-            saveUser();
-        }
     }
 
     private void startMainActivity() {
@@ -248,6 +244,14 @@ public class SignInActivity extends AppCompatActivity implements GoogleApiClient
 
     private void sendMessageToHandler(String event) {
         Bundle bundle = new Bundle();
+        bundle.putString(Constants.EVENT, event);
+        Message msg = handler.obtainMessage();
+        msg.setData(bundle);
+
+        handler.sendMessage(msg);
+    }
+
+    private void sendMessageToHandler(String event, Bundle bundle) {
         bundle.putString(Constants.EVENT, event);
         Message msg = handler.obtainMessage();
         msg.setData(bundle);
@@ -270,13 +274,18 @@ public class SignInActivity extends AppCompatActivity implements GoogleApiClient
 
             String event = msg.getData().getString(Constants.EVENT);
             switch (event) {
-                case Constants.EVENTS.SIGNING_PASSED:
-                    saveUser();
+                case Constants.EVENTS.LOGIN_PASSED:
+                case Constants.EVENTS.REGISTRATION_PASSED:
+                    String customToken = msg.getData().getString(Constants.CUSTOM_TOKEN);
+                    firebaseAuthWithCustomToken(customToken);
                     break;
-                case Constants.EVENTS.SIGNING_FAILED:
-                    Toast.makeText(SignInActivity.this, "Can't create Virgil Card.",
-                            Toast.LENGTH_SHORT).show();
-                    mFirebaseAuth.signOut();
+                case Constants.EVENTS.FIREBASE_SIGNIN_PASSED:
+                    startMainActivity();
+                    break;
+                case Constants.EVENTS.LOGIN_FAILED:
+                case Constants.EVENTS.REGISTRATION_FAILED:
+                    String errorMessage = msg.getData().getString(Constants.ERROR_MESSAGE);
+                    Toast.makeText(SignInActivity.this, errorMessage, Toast.LENGTH_LONG).show();
                     break;
             }
         }

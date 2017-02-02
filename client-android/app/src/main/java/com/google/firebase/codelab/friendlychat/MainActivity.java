@@ -113,7 +113,6 @@ public class MainActivity extends AppCompatActivity implements
 
     private String mUsername;
     private String mUseremail;
-    private String mPhotoUrl;
     private SharedPreferences mSharedPreferences;
 
     private Button mSendButton;
@@ -122,7 +121,6 @@ public class MainActivity extends AppCompatActivity implements
     private FirebaseRecyclerAdapter<FriendlyMessage, MessageViewHolder> mFirebaseAdapter;
     private ProgressBar mProgressBar;
     private DatabaseReference mFirebaseDatabaseReference;
-    private DatabaseReference mUsersDatabaseReference;
     private FirebaseAuth mFirebaseAuth;
     private FirebaseUser mFirebaseUser;
     private FirebaseAnalytics mFirebaseAnalytics;
@@ -155,9 +153,11 @@ public class MainActivity extends AppCompatActivity implements
             finish();
             return;
         } else {
-            mUsername = mFirebaseUser.getDisplayName();
-            mUseremail = mFirebaseUser.getEmail();
-            mPhotoUrl = mFirebaseUser.getPhotoUrl().toString();
+            //TODO load this data from your server
+//            mUsername = mFirebaseUser.getDisplayName();
+//            mUseremail = mFirebaseUser.getEmail();
+            mUsername = mFirebaseUser.getUid();
+            mUseremail = mFirebaseUser.getUid();
         }
 
         // Virgil client
@@ -172,7 +172,7 @@ public class MainActivity extends AppCompatActivity implements
         mCrypto = new VirgilCrypto();
         mVirgilClient = new VirgilClient(mSharedPreferences.getString(Constants.VIRGIL_TOKEN, ""));
 
-        mPrivateKey = mCrypto.importPrivateKey(ConvertionUtils.base64ToArray(privateKeyStr));
+        mPrivateKey = mCrypto.importPrivateKey(ConvertionUtils.base64ToBytes(privateKeyStr));
         mPublicKey = mCrypto.extractPublicKey(mPrivateKey);
         mRecipients = new RecipientStorage();
 
@@ -188,61 +188,6 @@ public class MainActivity extends AppCompatActivity implements
 
         mFirebaseDatabaseReference = FirebaseDatabase.getInstance().getReference();
 
-        mUsersDatabaseReference = mFirebaseDatabaseReference.child(Constants.USERS_CHILD);
-        mUsersDatabaseReference.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(DataSnapshot dataSnapshot) {
-                Log.d(TAG, "Fire addListenerForSingleValueEvent");
-                Set<String> identities = new HashSet<String>();
-                for (DataSnapshot snapshot : dataSnapshot.getChildren()) {
-                    User user = snapshot.getValue(User.class);
-
-                    Log.d(TAG, "Loading public key for identity " + user.getEmail());
-                    identities.add(user.getEmail());
-                }
-
-                if (!identities.isEmpty()) {
-                    findPublicKeys(identities);
-                }
-
-                // Register child event listener for Users
-                mUsersDatabaseReference.addChildEventListener(new ChildEventListener() {
-                    @Override
-                    public void onChildAdded(DataSnapshot dataSnapshot, String s) {
-                        User user = dataSnapshot.getValue(User.class);
-
-                        Log.d(TAG, "Loading public key for " + user.getEmail());
-                        findPublicKeys(Arrays.asList(user.getEmail()));
-                    }
-
-                    @Override
-                    public void onChildChanged(DataSnapshot dataSnapshot, String s) {
-
-                    }
-
-                    @Override
-                    public void onChildRemoved(DataSnapshot dataSnapshot) {
-
-                    }
-
-                    @Override
-                    public void onChildMoved(DataSnapshot dataSnapshot, String s) {
-
-                    }
-
-                    @Override
-                    public void onCancelled(DatabaseError databaseError) {
-                        Log.e(TAG, databaseError.getMessage());
-                    }
-                });
-            }
-
-            @Override
-            public void onCancelled(DatabaseError databaseError) {
-                Log.w(TAG, databaseError.getMessage());
-            }
-        });
-
         mFirebaseAdapter = new FirebaseRecyclerAdapter<FriendlyMessage, MessageViewHolder>(
                 FriendlyMessage.class,
                 R.layout.item_message,
@@ -255,7 +200,7 @@ public class MainActivity extends AppCompatActivity implements
                 if (friendlyMessage != null) {
                     friendlyMessage.setId(snapshot.getKey());
                     try {
-                        byte[] decrypted = mCrypto.decrypt(ConvertionUtils.base64ToArray(friendlyMessage.getText()), mPrivateKey);
+                        byte[] decrypted = mCrypto.decrypt(ConvertionUtils.base64ToBytes(friendlyMessage.getText()), mPrivateKey);
                         friendlyMessage.setText(ConvertionUtils.toString(decrypted));
                     } catch (Exception e) {
                         Log.w(TAG, "Message not encrypted " + friendlyMessage.getId());
@@ -371,7 +316,7 @@ public class MainActivity extends AppCompatActivity implements
                 }
 
                 FriendlyMessage friendlyMessage = new FriendlyMessage(text, mUsername, mUseremail,
-                        mPhotoUrl);
+                        null);
                 mFirebaseDatabaseReference.child(Constants.MESSAGES_CHILD).push().setValue(friendlyMessage);
                 mMessageEditText.setText("");
                 mFirebaseAnalytics.logEvent(MESSAGE_SENT_EVENT, null);
@@ -445,7 +390,6 @@ public class MainActivity extends AppCompatActivity implements
                 Auth.GoogleSignInApi.signOut(mGoogleApiClient);
                 mFirebaseUser = null;
                 mUsername = ANONYMOUS;
-                mPhotoUrl = null;
                 startActivity(new Intent(this, SignInActivity.class));
                 return true;
             case R.id.fresh_config_menu:

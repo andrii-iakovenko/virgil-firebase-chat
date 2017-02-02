@@ -59,9 +59,8 @@ dependencies {
     compile 'com.firebaseui:firebase-ui-database:0.4.0'
 
     // Virgil
-    compile 'com.virgilsecurity.sdk:android:4.1.2@aar'
+    compile 'com.virgilsecurity.sdk:android:4.2.0@aar'
     compile 'com.google.code.gson:gson:2.7'
-    compile 'org.apache.httpcomponents:httpclient-android:4.3.5.1'
 
 
     // Testing dependencies

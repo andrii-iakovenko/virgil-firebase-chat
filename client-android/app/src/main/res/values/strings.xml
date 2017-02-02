@@ -16,4 +16,5 @@
     <string name="virgil_app_id">Application Identifier</string>
     <string name="virgil_app_private_key">Virgil Application Private key</string>
     <string name="virgil_app_private_key_password">Virgil Application Private Key password</string>
+    <string name="server_base_url">Chat server base URL</string>
 </resources>
