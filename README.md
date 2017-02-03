@@ -21,11 +21,13 @@
 - Add new token
 
 Collect attributes from this page:
-|| Attribute name || Description ||
-| VIRGIL_ACCESS_TOKEN | The generated access token |
-| VIRGIL_APP_ID | APP ID |
-| VIRGIL_APP_KEY | Application private key. See file downloaded when you created an application |
-| VIRGIL_APP_KEY_PWD | The password which used for applicaion private key protection |
+
+ Attribute name | Description
+ ---------------|-------------
+VIRGIL_ACCESS_TOKEN | The generated access token
+VIRGIL_APP_ID | APP ID
+VIRGIL_APP_KEY | Application private key. See file downloaded when you created an application
+VIRGIL_APP_KEY_PWD | The password which used for applicaion private key protection
 
 ### Configure Firebase project
 - Create new project at console https://console.firebase.google.com/
@@ -38,10 +40,12 @@ Collect attributes from this page:
 - Go to Settings - Service Accounts - Firebase Admin SDK and generate new private key
 
 Collect attributes from this page:
-|| Attribute name || Description ||
-| FIREBASE_SERVICE_ACCOUNT_KEY | This file downloaded authmatically when you generate new private key at Settings - Service Accounts - Firebase Admin SDK |
-| FIREBASE_DATABASE_URL | Copy value from the header on Database - Data tab |
-| google-services.json | Download it from Settings - General - Your apps |
+
+Attribute name | Description
+---------------|-------------
+FIREBASE_SERVICE_ACCOUNT_KEY | This file downloaded authmatically when you generate new private key at Settings - Service Accounts - Firebase Admin SDK
+FIREBASE_DATABASE_URL | Copy value from the header on Database - Data tab
+google-services.json | Download it from Settings - General - Your apps
 
 ### Configure server
 
@@ -109,6 +113,7 @@ For registering new user mobile application sends request to Server.
 
 ```java
 // SignInActivity.java
+
 Uri uri = Uri.parse(mBaseURL + "/signup").buildUpon()
         .appendQueryParameter("email", email)
         .appendQueryParameter("password", password)
@@ -171,6 +176,7 @@ When mobile application receives custom token from the Server, it could authenti
 
 ```java
 // SignInActivity.java
+
 mFirebaseAuth.signInWithCustomToken(customToken)
         .addOnCompleteListener(this, new OnCompleteListener<AuthResult>() {
 
