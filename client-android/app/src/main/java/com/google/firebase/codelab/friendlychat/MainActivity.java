@@ -59,13 +59,11 @@ import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.codelab.friendlychat.model.FriendlyMessage;
 import com.google.firebase.codelab.friendlychat.model.User;
 import com.google.firebase.codelab.friendlychat.utils.Constants;
+import com.google.firebase.codelab.friendlychat.utils.HttpUtils;
 import com.google.firebase.codelab.friendlychat.utils.RecipientStorage;
-import com.google.firebase.database.ChildEventListener;
 import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig;
 import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings;
 import com.virgilsecurity.sdk.client.VirgilClient;
@@ -78,8 +76,7 @@ import com.virgilsecurity.sdk.crypto.PrivateKey;
 import com.virgilsecurity.sdk.crypto.PublicKey;
 import com.virgilsecurity.sdk.crypto.VirgilCrypto;
 
-import java.util.Arrays;
-import java.util.Collection;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -114,6 +111,7 @@ public class MainActivity extends AppCompatActivity implements
     private String mUsername;
     private String mUseremail;
     private SharedPreferences mSharedPreferences;
+    private String mBaseURL;
 
     private Button mSendButton;
     private RecyclerView mMessageRecyclerView;
@@ -141,6 +139,7 @@ public class MainActivity extends AppCompatActivity implements
         setContentView(R.layout.activity_main);
 
         mSharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        mBaseURL = mSharedPreferences.getString(Constants.BASE_URL, "");
         mUsername = ANONYMOUS;
 
         // Initialize Firebase Auth
@@ -153,9 +152,7 @@ public class MainActivity extends AppCompatActivity implements
             finish();
             return;
         } else {
-            //TODO load this data from your server
-//            mUsername = mFirebaseUser.getDisplayName();
-//            mUseremail = mFirebaseUser.getEmail();
+            //TODO load user name and email from your server
             mUsername = mFirebaseUser.getUid();
             mUseremail = mFirebaseUser.getUid();
         }
@@ -205,6 +202,7 @@ public class MainActivity extends AppCompatActivity implements
                     } catch (Exception e) {
                         Log.w(TAG, "Message not encrypted " + friendlyMessage.getId());
                         // Non-encrypted message or can't be decrypted
+                        friendlyMessage.setText(getString(R.string.message_could_not_be_dectypted));
                     }
                 }
                 return friendlyMessage;
@@ -264,8 +262,8 @@ public class MainActivity extends AppCompatActivity implements
         // Define Firebase Remote Config Settings.
         FirebaseRemoteConfigSettings firebaseRemoteConfigSettings =
                 new FirebaseRemoteConfigSettings.Builder()
-                .setDeveloperModeEnabled(true)
-                .build();
+                        .setDeveloperModeEnabled(true)
+                        .build();
 
         // Define default config values. Defaults are used when fetched config values are not
         // available. Eg: if an error occurred fetching values from the server.
@@ -305,23 +303,36 @@ public class MainActivity extends AppCompatActivity implements
         mSendButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                // Encrypt message
-                String text = mMessageEditText.getText().toString();
-                List<PublicKey> recipients = mRecipients.getAllRecipients();
-                try {
-                    byte[] data = mCrypto.encrypt(ConvertionUtils.toBytes(text), recipients.toArray(new PublicKey[recipients.size()]));
-                    text = ConvertionUtils.toBase64String(data);
-                } catch (Exception e) {
-                    Log.e(TAG, "Encryption error: " + e.getMessage());
-                }
-
-                FriendlyMessage friendlyMessage = new FriendlyMessage(text, mUsername, mUseremail,
-                        null);
-                mFirebaseDatabaseReference.child(Constants.MESSAGES_CHILD).push().setValue(friendlyMessage);
+                sendMessage(mMessageEditText.getText().toString());
                 mMessageEditText.setText("");
                 mFirebaseAnalytics.logEvent(MESSAGE_SENT_EVENT, null);
             }
         });
+    }
+
+    private void sendMessage(final String message) {
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                updateRecipients();
+
+                // Encrypt message
+                List<PublicKey> recipients = mRecipients.getAllRecipients();
+                String encryptedMessage = message;
+                try {
+                    byte[] data = mCrypto.encrypt(ConvertionUtils.toBytes(message), recipients.toArray(new PublicKey[recipients.size()]));
+                    encryptedMessage = ConvertionUtils.toBase64String(data);
+                } catch (Exception e) {
+                    Log.e(TAG, "Encryption error: " + e.getMessage());
+                }
+
+                // Send message with Firebase
+                FriendlyMessage friendlyMessage = new FriendlyMessage(encryptedMessage, mUsername, mUseremail,
+                        null);
+                mFirebaseDatabaseReference.child(Constants.MESSAGES_CHILD).push().setValue(friendlyMessage);
+            }
+        });
+        thread.start();
     }
 
     private Action getMessageViewAction(FriendlyMessage friendlyMessage) {
@@ -463,23 +474,33 @@ public class MainActivity extends AppCompatActivity implements
         Log.d(TAG, "FML is: " + friendly_msg_length);
     }
 
-    private void findPublicKeys(final Collection<String> identities) {
-        Thread background = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                SearchCriteria criteria = SearchCriteria.byIdentities(identities);
-                List<Card> cards = mVirgilClient.searchCards(criteria);
-                if (!cards.isEmpty()) {
-                    for (Card card : cards) {
-                        PublicKey publicKey = mCrypto.importPublicKey(card.getPublicKey());
+    private void updateRecipients() {
 
-                        Log.d(TAG, "Add public key for " + card.getIdentity());
-                        mRecipients.addRecipient(card.getIdentity(), publicKey);
-                    }
+        try {
+            // Get users from server
+            URL url = new URL(mBaseURL + "/users");
+
+            User[] users = HttpUtils.execute(url, "GET", null, null, User[].class);
+
+            Set<String> identities = new HashSet<>();
+            for (User user : users) {
+                identities.add(user.getEmail());
+            }
+
+            // Find Virgil Cards for users
+            SearchCriteria criteria = SearchCriteria.byIdentities(identities);
+            List<Card> cards = mVirgilClient.searchCards(criteria);
+            if (!cards.isEmpty()) {
+                for (Card card : cards) {
+                    PublicKey publicKey = mCrypto.importPublicKey(card.getPublicKey());
+
+                    Log.d(TAG, "Add public key for " + card.getIdentity());
+                    mRecipients.addRecipient(card.getIdentity(), publicKey);
                 }
             }
-        });
-        background.start();
+        } catch (Exception e) {
+            Log.e(TAG, "An error occurred while updating recipients", e);
+        }
     }
 
     @Override

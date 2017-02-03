@@ -6,6 +6,7 @@
 	<version>1.0-SNAPSHOT</version>
 	<name>Virgil + Firebase chat</name>
 	<url>https://www.virgilsecurity.com/</url>
+	<packaging>jar</packaging>
 
 	<properties>
 		<maven.compiler.source>1.7</maven.compiler.source>
@@ -69,12 +70,25 @@
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
+
 	<build>
 		<finalName>server</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+				<version>1.5.1.RELEASE</version>
+				<configuration>
+					<mainClass>com.virgilsecurity.firebasechat.server.Application</mainClass>
+					<layout>JAR</layout>
+				</configuration>
+				<executions>
+					<execution>
+						<goals>
+							<goal>repackage</goal>
+						</goals>
+					</execution>
+				</executions>
 			</plugin>
 		</plugins>
 	</build>

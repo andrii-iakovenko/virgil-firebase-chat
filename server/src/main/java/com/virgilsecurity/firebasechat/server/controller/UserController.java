@@ -63,7 +63,6 @@ public class UserController {
 
 	public UserController() {
 		users = new HashMap<String, User>();
-		users.put("admin@mail.com", new User("admin@mail.com", "1"));
 	}
 
 	@RequestMapping(value = "/login", method = RequestMethod.GET)
