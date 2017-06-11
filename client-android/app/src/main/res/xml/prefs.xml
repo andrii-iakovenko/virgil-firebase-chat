@@ -9,5 +9,5 @@
     <EditTextPreference
         android:key="base_url"
         android:title="@string/server_base_url"
-        android:defaultValue="SERVER_URL"/>
+        android:defaultValue="[SERVER_URL]"/>
 </PreferenceScreen>

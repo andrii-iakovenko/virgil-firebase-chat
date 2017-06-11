@@ -1,6 +1,9 @@
 package com.virgilsecurity.firebasechat.server;
 
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +22,7 @@ import com.virgilsecurity.sdk.client.utils.ConvertionUtils;
 import com.virgilsecurity.sdk.crypto.Crypto;
 import com.virgilsecurity.sdk.crypto.PrivateKey;
 import com.virgilsecurity.sdk.crypto.VirgilCrypto;
+import com.virgilsecurity.sdk.crypto.exception.CryptoException;
 
 @SpringBootApplication
 public class Application {
@@ -57,16 +61,33 @@ public class Application {
 
 	@Bean
 	@Autowired
-	public PrivateKey appKey(@Value("#{systemProperties['appKey']}") String appKey,
+	public PrivateKey appKey(@Value("#{systemProperties['appKey']}") String appKey, @Value("#{systemProperties['appKeyFile']}") String appKeyFileName,
 			@Value("#{systemProperties['appKeyPwd']}") String appKeyPwd, Crypto crypto) {
-		if (StringUtils.isEmpty(appKey)) {
+		byte[] keyData = null;
+		if (!StringUtils.isEmpty(appKey)) {
+			keyData = ConvertionUtils.base64ToBytes(appKey);
+		} else if (!StringUtils.isEmpty(appKeyFileName)) {
+			File file = new File(appKeyFileName);
+			try (FileInputStream fis = new FileInputStream(file)) {
+				keyData = new byte[(int) file.length()];
+				fis.read(keyData);
+			} catch (FileNotFoundException e) {
+				throw new RuntimeException("Application key file not found");
+			} catch (IOException e) {
+				throw new RuntimeException("Application key file read error");
+			}
+		} else {
 			throw new RuntimeException("Application key is not defined");
 		}
 		if (StringUtils.isEmpty(appKeyPwd)) {
 			throw new RuntimeException("Application key password is not defined");
 		}
-		PrivateKey key = crypto.importPrivateKey(ConvertionUtils.base64ToBytes(appKey), appKeyPwd);
-		return key;
+		try {
+			PrivateKey key = crypto.importPrivateKey(keyData, appKeyPwd);
+			return key;
+		} catch (CryptoException e) {
+			throw new RuntimeException("Private key importing error: " + e.getMessage());
+		}
 	}
 
 	@Bean

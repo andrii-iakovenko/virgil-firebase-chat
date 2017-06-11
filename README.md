@@ -58,13 +58,13 @@ mvn clean package
 Start server with command
 
 ```
-java -jar target/server.jar \
- -DserviceAccountKey=[FIREBASE_SERVICE_ACCOUNT_KEY] \
+java -DserviceAccountKey=[FIREBASE_SERVICE_ACCOUNT_KEY] \
  -DdatabaseUrl=[FIREBASE_DATABASE_URL] \
  -DaccessToken=[VIRGIL_ACCESS_TOKEN] \
  -DappId=[VIRGIL_APP_ID] \
  -DappKey=[VIRGIL_APP_KEY] \
- -DappKeyPwd=[VIRGIL_APP_KEY_PWD]
+ -DappKeyPwd=[VIRGIL_APP_KEY_PWD] \
+ -jar target/server.jar \
 ```
 
 FIREBASE_SERVICE_ACCOUNT_KEY is a path to the file.

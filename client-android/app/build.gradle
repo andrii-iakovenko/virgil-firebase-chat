@@ -59,7 +59,8 @@ dependencies {
     compile 'com.firebaseui:firebase-ui-database:0.4.0'
 
     // Virgil
-    compile 'com.virgilsecurity.sdk:android:4.2.0@aar'
+    compile 'com.virgilsecurity.sdk:crypto-android:4.3.3@aar'
+    compile 'com.virgilsecurity.sdk:sdk-android:4.3.3@aar'
     compile 'com.google.code.gson:gson:2.7'
 
 

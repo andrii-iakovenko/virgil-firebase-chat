@@ -67,14 +67,14 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig;
 import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings;
 import com.virgilsecurity.sdk.client.VirgilClient;
-import com.virgilsecurity.sdk.client.model.Card;
+import com.virgilsecurity.sdk.client.model.CardModel;
 import com.virgilsecurity.sdk.client.model.dto.SearchCriteria;
-import com.virgilsecurity.sdk.client.utils.ConvertionUtils;
-import com.virgilsecurity.sdk.client.utils.StringUtils;
 import com.virgilsecurity.sdk.crypto.Crypto;
 import com.virgilsecurity.sdk.crypto.PrivateKey;
 import com.virgilsecurity.sdk.crypto.PublicKey;
 import com.virgilsecurity.sdk.crypto.VirgilCrypto;
+import com.virgilsecurity.sdk.utils.ConvertionUtils;
+import com.virgilsecurity.sdk.utils.StringUtils;
 
 import java.net.URL;
 import java.util.HashMap;
@@ -489,13 +489,13 @@ public class MainActivity extends AppCompatActivity implements
 
             // Find Virgil Cards for users
             SearchCriteria criteria = SearchCriteria.byIdentities(identities);
-            List<Card> cards = mVirgilClient.searchCards(criteria);
+            List<CardModel> cards = mVirgilClient.searchCards(criteria);
             if (!cards.isEmpty()) {
-                for (Card card : cards) {
-                    PublicKey publicKey = mCrypto.importPublicKey(card.getPublicKey());
+                for (CardModel card : cards) {
+                    PublicKey publicKey = mCrypto.importPublicKey(card.getSnapshotModel().getPublicKeyData());
 
-                    Log.d(TAG, "Add public key for " + card.getIdentity());
-                    mRecipients.addRecipient(card.getIdentity(), publicKey);
+                    Log.d(TAG, "Add public key for " + card.getSnapshotModel().getIdentity());
+                    mRecipients.addRecipient(card.getSnapshotModel().getIdentity(), publicKey);
                 }
             }
         } catch (Exception e) {

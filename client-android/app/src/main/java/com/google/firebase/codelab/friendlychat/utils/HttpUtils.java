@@ -1,7 +1,7 @@
 package com.google.firebase.codelab.friendlychat.utils;
 
-import com.virgilsecurity.sdk.client.utils.ConvertionUtils;
-import com.virgilsecurity.sdk.client.utils.StreamUtils;
+import com.virgilsecurity.sdk.utils.ConvertionUtils;
+import com.virgilsecurity.sdk.utils.StreamUtils;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
