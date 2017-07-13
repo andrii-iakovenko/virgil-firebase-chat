@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -28,15 +29,14 @@ import com.google.firebase.tasks.OnSuccessListener;
 import com.google.firebase.tasks.Task;
 import com.google.firebase.tasks.Tasks;
 import com.virgilsecurity.firebasechat.server.exception.ServiceException;
+import com.virgilsecurity.firebasechat.server.model.RegistrationData;
 import com.virgilsecurity.firebasechat.server.model.User;
 import com.virgilsecurity.sdk.client.RequestSigner;
 import com.virgilsecurity.sdk.client.VirgilClient;
-import com.virgilsecurity.sdk.client.model.Card;
-import com.virgilsecurity.sdk.client.requests.CreateCardRequest;
-import com.virgilsecurity.sdk.client.utils.ConvertionUtils;
+import com.virgilsecurity.sdk.client.model.CardModel;
+import com.virgilsecurity.sdk.client.requests.PublishCardRequest;
 import com.virgilsecurity.sdk.crypto.Crypto;
 import com.virgilsecurity.sdk.crypto.PrivateKey;
-import com.virgilsecurity.sdk.crypto.PublicKey;
 
 /**
  * @author Andrii Iakovenko
@@ -75,20 +75,23 @@ public class UserController {
 		return authenticateWithFirebase(email);
 	}
 
-	@RequestMapping(value = "/signup", method = RequestMethod.GET)
-	public String signup(@RequestParam("email") String email, @RequestParam("password") String password,
-			@RequestParam("key") String key) {
+	@RequestMapping(value = "/signup", method = RequestMethod.POST)
+	public RegistrationData signup(@RequestParam("email") String email, @RequestParam("password") String password,
+			@RequestBody String stringifiedPublishCardRequest) {
 
 		if (users.containsKey(email)) {
 			throw new ServiceException(002001, "User is already registered");
 		}
 
+		PublishCardRequest publishCardRequest = new PublishCardRequest(stringifiedPublishCardRequest);
 		// Register Virgil Card for new user
-		registerVirgilCard(email, key);
+		CardModel card = registerVirgilCard(publishCardRequest);
 
-		users.put(email, new User(email, password));
+		users.put(email, new User(card.getId(), email, password));
 
-		return authenticateWithFirebase(email);
+		String customToken = authenticateWithFirebase(email);
+
+		return new RegistrationData(customToken, card.getId());
 	}
 
 	@RequestMapping("/users")
@@ -129,26 +132,15 @@ public class UserController {
 	/**
 	 * Register new Virgil Card.
 	 * 
-	 * @param email
-	 *            The email of user.
-	 * @param key
-	 *            The base64-encoded private key of the user.
+	 * @param publishCardRequest
 	 * @return The created Virgil Card.
 	 */
-	private Card registerVirgilCard(String email, String key) {
-		PrivateKey privateKey = crypto.importPrivateKey(ConvertionUtils.base64ToBytes(key));
-		PublicKey publicKey = crypto.extractPublicKey(privateKey);
-
-		CreateCardRequest createCardRequest = new CreateCardRequest(email, "firebase_user",
-				crypto.exportPublicKey(publicKey));
-
+	private CardModel registerVirgilCard(PublishCardRequest publishCardRequest) {
 		RequestSigner requestSigner = new RequestSigner(crypto);
-
-		requestSigner.selfSign(createCardRequest, privateKey);
-		requestSigner.authoritySign(createCardRequest, appId, appKey);
+		requestSigner.authoritySign(publishCardRequest, appId, appKey);
 
 		/** Publish a Virgil Card */
-		Card card = virgilClient.createCard(createCardRequest);
+		CardModel card = virgilClient.publishCard(publishCardRequest);
 		return card;
 	}
 }

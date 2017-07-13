@@ -15,19 +15,26 @@
  */
 package com.google.firebase.codelab.friendlychat.model;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class FriendlyMessage {
 
     private String id;
+    private String senderCardId;
+    private Map<String, String> encryptedMessages;
     private String text;
     private String name;
     private String email;
     private String photoUrl;
 
     public FriendlyMessage() {
+        encryptedMessages = new HashMap<>();
     }
 
-    public FriendlyMessage(String text, String name, String email, String photoUrl) {
-        this.text = text;
+    public FriendlyMessage(String senderCardId, String name, String email, String photoUrl) {
+        this();
+        this.senderCardId = senderCardId;
         this.name = name;
         this.email = email;
         this.photoUrl = photoUrl;
@@ -39,14 +46,6 @@ public class FriendlyMessage {
 
     public void setId(String id) {
         this.id = id;
-    }
-
-    public String getText() {
-        return text;
-    }
-
-    public void setText(String text) {
-        this.text = text;
     }
 
     public String getName() {
@@ -71,5 +70,33 @@ public class FriendlyMessage {
 
     public void setPhotoUrl(String photoUrl) {
         this.photoUrl = photoUrl;
+    }
+
+    public void addEncryptedMessage(String recipientCardId, String encryptedMessage) {
+        encryptedMessages.put(recipientCardId, encryptedMessage);
+    }
+
+    public Map<String, String> getEncryptedMessages() {
+        return encryptedMessages;
+    }
+
+    public void setEncryptedMessages(Map<String, String> encryptedMessages) {
+        this.encryptedMessages = encryptedMessages;
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public void setText(String text) {
+        this.text = text;
+    }
+
+    public String getSenderCardId() {
+        return senderCardId;
+    }
+
+    public void setSenderCardId(String senderCardId) {
+        this.senderCardId = senderCardId;
     }
 }

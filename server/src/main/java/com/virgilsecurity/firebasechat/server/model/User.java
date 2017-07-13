@@ -7,6 +7,8 @@ import java.beans.Transient;
  *
  */
 public class User {
+	
+	private String cardId;
 
 	private String email;
 
@@ -15,7 +17,8 @@ public class User {
 	public User() {
 	}
 
-	public User(String email, String password) {
+	public User(String cardId, String email, String password) {
+		this.cardId = cardId;
 		this.email = email;
 		this.password = password;
 	}
@@ -35,5 +38,13 @@ public class User {
 
 	public void setPassword(String password) {
 		this.password = password;
+	}
+
+	public String getCardId() {
+		return cardId;
+	}
+
+	public void setCardId(String cardId) {
+		this.cardId = cardId;
 	}
 }

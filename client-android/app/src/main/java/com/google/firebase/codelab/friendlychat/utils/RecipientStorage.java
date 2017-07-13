@@ -1,6 +1,6 @@
 package com.google.firebase.codelab.friendlychat.utils;
 
-import com.virgilsecurity.sdk.crypto.PublicKey;
+import com.virgilsecurity.sdk.client.model.CardModel;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -15,32 +15,29 @@ import java.util.Set;
 
 public class RecipientStorage {
 
-    private Map<String, Set<PublicKey>> recipients;
+    private Map<String, CardModel> recipients;
 
     public RecipientStorage() {
         this.recipients = new HashMap<>();
     }
 
-    public void addRecipient(String identity, PublicKey publicKey) {
+    public void addRecipient(CardModel card) {
         synchronized (this) {
-            Set<PublicKey> keys;
-            if (recipients.containsKey(identity)) {
-                keys = recipients.get(identity);
-            } else {
-                keys = new HashSet<>();
-                recipients.put(identity, keys);
-            }
-            keys.add(publicKey);
+            recipients.put(card.getId(), card);
         }
     }
 
-    public List<PublicKey> getAllRecipients() {
-        List<PublicKey> allKeys = new ArrayList<>();
+    public Set<CardModel> getAllRecipients() {
         synchronized (this) {
-            for (Set<PublicKey> publicKeys : recipients.values()) {
-                allKeys.addAll(publicKeys);
-            }
+            return new HashSet<>(recipients.values());
         }
-        return allKeys;
+    }
+
+    public boolean isExist(String cardId) {
+        return recipients.containsKey(cardId);
+    }
+
+    public CardModel getRecipient(String cardId) {
+        return recipients.get(cardId);
     }
 }

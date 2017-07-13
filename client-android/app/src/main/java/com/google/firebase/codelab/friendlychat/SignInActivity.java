@@ -37,14 +37,38 @@ import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.AuthResult;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.codelab.friendlychat.model.RegistrationData;
 import com.google.firebase.codelab.friendlychat.utils.Constants;
 import com.google.firebase.codelab.friendlychat.utils.HttpUtils;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonPrimitive;
+import com.google.gson.JsonSerializationContext;
+import com.google.gson.JsonSerializer;
+import com.google.gson.TypeAdapter;
+import com.google.gson.TypeAdapterFactory;
+import com.google.gson.reflect.TypeToken;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import com.google.gson.stream.JsonWriter;
+import com.virgilsecurity.crypto.VirgilBase64;
+import com.virgilsecurity.sdk.client.RequestSigner;
+import com.virgilsecurity.sdk.client.model.CardModel;
+import com.virgilsecurity.sdk.client.model.dto.PublishCardSnapshotModel;
+import com.virgilsecurity.sdk.client.requests.PublishCardRequest;
 import com.virgilsecurity.sdk.crypto.Crypto;
 import com.virgilsecurity.sdk.crypto.KeyPair;
 import com.virgilsecurity.sdk.crypto.VirgilCrypto;
 import com.virgilsecurity.sdk.utils.ConvertionUtils;
 import com.virgilsecurity.sdk.utils.StringUtils;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.lang.reflect.Type;
 import java.net.URL;
 
 public class SignInActivity extends AppCompatActivity implements GoogleApiClient.OnConnectionFailedListener,
@@ -135,12 +159,21 @@ public class SignInActivity extends AppCompatActivity implements GoogleApiClient
                             .appendQueryParameter("key", ConvertionUtils.toBase64String(crypto.exportPrivateKey(keyPair.getPrivateKey())))
                             .build();
 
+                    byte[] publicKeyData = crypto.exportPublicKey(keyPair.getPublicKey());
+                    PublishCardRequest publishCardRequest = new PublishCardRequest(email, Constants.IDENTITY_TYPE, publicKeyData);
+                    RequestSigner requestSigner = new RequestSigner(crypto);
+                    requestSigner.selfSign(publishCardRequest, keyPair.getPrivateKey());
+
                     URL url = new URL(uri.toString());
-                    String customToken = HttpUtils.execute(url, "GET", null, null, String.class);
+                    RegistrationData registrationData = HttpUtils.execute(url, "POST", null,
+                            new ByteArrayInputStream(ConvertionUtils.toBytes(publishCardRequest.exportRequest())), RegistrationData.class);
+
+                    String customToken = registrationData.getCustomToken();
                     Log.d(TAG, "Got custom token: " + customToken);
 
-                    // Save private key for future use
+                    // Save Virgil Card and private key for future use
                     mSharedPreferences.edit()
+                            .putString(Constants.MY_CARD_ID + email, registrationData.getCardId())
                             .putString(Constants.PRIVATE_KEY + email, ConvertionUtils.toBase64String(crypto.exportPrivateKey(keyPair.getPrivateKey())))
                             .commit();
 
@@ -266,5 +299,6 @@ public class SignInActivity extends AppCompatActivity implements GoogleApiClient
             }
         }
     };
+
 
 }

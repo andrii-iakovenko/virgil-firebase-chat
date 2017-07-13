@@ -11,7 +11,7 @@
 	<properties>
 		<maven.compiler.source>1.7</maven.compiler.source>
 		<maven.compiler.target>1.7</maven.compiler.target>
-		<virgil.version>4.2.0</virgil.version>
+		<virgil.version>4.5.0</virgil.version>
 	</properties>
 
 	<dependencyManagement>
@@ -34,7 +34,7 @@
 			<!-- https://mvnrepository.com/artifact/com.virgilsecurity.sdk/client -->
 			<dependency>
 				<groupId>com.virgilsecurity.sdk</groupId>
-				<artifactId>client</artifactId>
+				<artifactId>sdk</artifactId>
 				<version>${virgil.version}</version>
 			</dependency>
 		</dependencies>
@@ -51,7 +51,7 @@
 		</dependency>
 		<dependency>
 			<groupId>com.virgilsecurity.sdk</groupId>
-			<artifactId>client</artifactId>
+			<artifactId>sdk</artifactId>
 		</dependency>
 
 		<dependency>

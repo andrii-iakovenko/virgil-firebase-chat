@@ -18,6 +18,7 @@ package com.google.firebase.codelab.friendlychat;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Environment;
 import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.v4.content.ContextCompat;
@@ -56,27 +57,41 @@ import com.google.firebase.appindexing.builders.Indexables;
 import com.google.firebase.appindexing.builders.PersonBuilder;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.codelab.friendlychat.fdb.ExecutorValueEventListener;
 import com.google.firebase.codelab.friendlychat.model.FriendlyMessage;
 import com.google.firebase.codelab.friendlychat.model.User;
 import com.google.firebase.codelab.friendlychat.utils.Constants;
 import com.google.firebase.codelab.friendlychat.utils.HttpUtils;
 import com.google.firebase.codelab.friendlychat.utils.RecipientStorage;
 import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig;
 import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings;
 import com.virgilsecurity.sdk.client.VirgilClient;
+import com.virgilsecurity.sdk.client.exceptions.VirgilException;
 import com.virgilsecurity.sdk.client.model.CardModel;
 import com.virgilsecurity.sdk.client.model.dto.SearchCriteria;
 import com.virgilsecurity.sdk.crypto.Crypto;
 import com.virgilsecurity.sdk.crypto.PrivateKey;
 import com.virgilsecurity.sdk.crypto.PublicKey;
 import com.virgilsecurity.sdk.crypto.VirgilCrypto;
+import com.virgilsecurity.sdk.device.DefaultDeviceManager;
+import com.virgilsecurity.sdk.pfs.VirgilPFSClientContext;
+import com.virgilsecurity.sdk.securechat.DefaultUserDataStorage;
+import com.virgilsecurity.sdk.securechat.SecureChat;
+import com.virgilsecurity.sdk.securechat.SecureChatContext;
+import com.virgilsecurity.sdk.securechat.SecureSession;
+import com.virgilsecurity.sdk.securechat.utils.SessionStateResolver;
+import com.virgilsecurity.sdk.storage.VirgilKeyStorage;
 import com.virgilsecurity.sdk.utils.ConvertionUtils;
 import com.virgilsecurity.sdk.utils.StringUtils;
 
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -129,6 +144,10 @@ public class MainActivity extends AppCompatActivity implements
 
     private Crypto mCrypto;
     private VirgilClient mVirgilClient;
+    private SecureChatContext secureChatContext;
+    private SecureChat secureChat;
+
+    private CardModel mCard;
     private PublicKey mPublicKey;
     private PrivateKey mPrivateKey;
     private RecipientStorage mRecipients;
@@ -193,16 +212,54 @@ public class MainActivity extends AppCompatActivity implements
 
             @Override
             protected FriendlyMessage parseSnapshot(DataSnapshot snapshot) {
-                FriendlyMessage friendlyMessage = super.parseSnapshot(snapshot);
+                final FriendlyMessage friendlyMessage = super.parseSnapshot(snapshot);
                 if (friendlyMessage != null) {
                     friendlyMessage.setId(snapshot.getKey());
+                    Log.i(TAG, "Message text: " + friendlyMessage.getText());
+
+                        Thread thread = new Thread(new Runnable() {
+                            @Override
+                            public void run() {
+                                try {
+                                    if (!mRecipients.isExist(friendlyMessage.getSenderCardId())) {
+                                        updateRecipients();
+                                    }
+                                    if (!mRecipients.isExist(friendlyMessage.getSenderCardId())) {
+                                        throw new Exception("Sender is unknown");
+                                    }
+                                    // Get message sent to me
+                                    String encryptedMessage = friendlyMessage.getEncryptedMessages().get(mCard.getId());
+                                    if (encryptedMessage == null) {
+                                        friendlyMessage.setText(getString(R.string.message_could_not_be_dectypted));
+                                    } else {
+                                        //TODO Decrypt message
+                                        CardModel senderCard = mRecipients.getRecipient(friendlyMessage.getSenderCardId());
+                                        SecureSession session;
+                                        if (SessionStateResolver.isInitiationMessage(encryptedMessage)) {
+                                            // Start new session as responder
+                                            session = secureChat.loadUpSession(senderCard, encryptedMessage);
+                                        } else {
+                                            session = secureChat.activeSession(senderCard.getId());
+                                            if (session == null) {
+                                                // Restore session from message
+                                                session = secureChat.loadUpSession(senderCard, encryptedMessage);
+                                            }
+                                        }
+                                        String decryptedMessage = session.decrypt(encryptedMessage);
+                                        friendlyMessage.setText(decryptedMessage);
+                                    }
+                                } catch (Exception e) {
+                                    Log.w(TAG, "Message not encrypted " + friendlyMessage.getId() + " : " + e.getMessage());
+                                    // Non-encrypted message or can't be decrypted
+                                    friendlyMessage.setText(getString(R.string.message_could_not_be_dectypted));
+                                }
+                            }
+                        });
+                        thread.start();
                     try {
-                        byte[] decrypted = mCrypto.decrypt(ConvertionUtils.base64ToBytes(friendlyMessage.getText()), mPrivateKey);
-                        friendlyMessage.setText(ConvertionUtils.toString(decrypted));
-                    } catch (Exception e) {
-                        Log.w(TAG, "Message not encrypted " + friendlyMessage.getId());
-                        // Non-encrypted message or can't be decrypted
-                        friendlyMessage.setText(getString(R.string.message_could_not_be_dectypted));
+                        thread.join();
+                    } catch (InterruptedException e) {
+                        Log.e(TAG, "Interrupted thread", e);
                     }
                 }
                 return friendlyMessage;
@@ -308,6 +365,8 @@ public class MainActivity extends AppCompatActivity implements
                 mFirebaseAnalytics.logEvent(MESSAGE_SENT_EVENT, null);
             }
         });
+
+        initSecureChat();
     }
 
     private void sendMessage(final String message) {
@@ -316,19 +375,26 @@ public class MainActivity extends AppCompatActivity implements
             public void run() {
                 updateRecipients();
 
-                // Encrypt message
-                List<PublicKey> recipients = mRecipients.getAllRecipients();
-                String encryptedMessage = message;
-                try {
-                    byte[] data = mCrypto.encrypt(ConvertionUtils.toBytes(message), recipients.toArray(new PublicKey[recipients.size()]));
-                    encryptedMessage = ConvertionUtils.toBase64String(data);
-                } catch (Exception e) {
-                    Log.e(TAG, "Encryption error: " + e.getMessage());
+                FriendlyMessage friendlyMessage = new FriendlyMessage(mCard.getId(), mUsername, mUseremail, null);
+
+                // Encrypt message for every user in chat
+                for (CardModel card : mRecipients.getAllRecipients()) {
+                    try {
+                        // Is session active?
+                        SecureSession session = secureChat.activeSession(card.getId());
+                        if (session == null) {
+                            // No session yet, start new one
+                            session = secureChat.startNewSession(card, null);
+                        }
+                        String encryptedMessage = session.encrypt(message);
+                        friendlyMessage.addEncryptedMessage(card.getId(), encryptedMessage);
+                    }
+                    catch (Exception e) {
+                        Log.e(TAG, "Can't encrypt message for " + card.getId());
+                    }
                 }
 
                 // Send message with Firebase
-                FriendlyMessage friendlyMessage = new FriendlyMessage(encryptedMessage, mUsername, mUseremail,
-                        null);
                 mFirebaseDatabaseReference.child(Constants.MESSAGES_CHILD).push().setValue(friendlyMessage);
             }
         });
@@ -480,11 +546,20 @@ public class MainActivity extends AppCompatActivity implements
             // Get users from server
             URL url = new URL(mBaseURL + "/users");
 
-            User[] users = HttpUtils.execute(url, "GET", null, null, User[].class);
+            List<User> users = new ArrayList<>(Arrays.asList(HttpUtils.execute(url, "GET", null, null, User[].class)));
+            if (users.isEmpty()) {
+                if (mRecipients.isExist(mCard.getId())) {
+                    return;
+                } else {
+                    users.add(new User(mCard.getId(), mUseremail, mUsername));
+                }
+            }
 
+            Set<String> cardIds = new HashSet<>();
             Set<String> identities = new HashSet<>();
             for (User user : users) {
                 identities.add(user.getEmail());
+                cardIds.add(user.getCardId());
             }
 
             // Find Virgil Cards for users
@@ -492,10 +567,12 @@ public class MainActivity extends AppCompatActivity implements
             List<CardModel> cards = mVirgilClient.searchCards(criteria);
             if (!cards.isEmpty()) {
                 for (CardModel card : cards) {
-                    PublicKey publicKey = mCrypto.importPublicKey(card.getSnapshotModel().getPublicKeyData());
-
-                    Log.d(TAG, "Add public key for " + card.getSnapshotModel().getIdentity());
-                    mRecipients.addRecipient(card.getSnapshotModel().getIdentity(), publicKey);
+                    if (!cardIds.contains(card.getId())) {
+                        // Skip cards which are not registered
+                        continue;
+                    }
+                    Log.d(TAG, "Add Card for " + card.getSnapshotModel().getIdentity() + " : " + card.getId());
+                    mRecipients.addRecipient(card);
                 }
             }
         } catch (Exception e) {
@@ -506,6 +583,29 @@ public class MainActivity extends AppCompatActivity implements
     @Override
     public void onConnectionFailed(ConnectionResult connectionResult) {
         Log.d(TAG, "onConnectionFailed:" + connectionResult);
+    }
+
+    private void initSecureChat() {
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String cardId = mSharedPreferences.getString(Constants.MY_CARD_ID + mUseremail, "");
+                mCard = mVirgilClient.getCard(cardId);
+
+                updateRecipients();
+
+                VirgilPFSClientContext ctx = new VirgilPFSClientContext(mSharedPreferences.getString(Constants.VIRGIL_TOKEN, ""));
+                secureChatContext = new SecureChatContext(mCard, mPrivateKey, mCrypto, ctx);
+                secureChatContext.setKeyStorage(new VirgilKeyStorage(Environment.getExternalStorageDirectory() + "/keyStorage"));
+                secureChatContext.setDeviceManager(new DefaultDeviceManager());
+                secureChatContext.setUserDefaults(new DefaultUserDataStorage());
+                secureChat = new SecureChat(secureChatContext);
+
+                secureChat.initialize();
+            }
+        });
+        thread.start();
+
     }
 
 }

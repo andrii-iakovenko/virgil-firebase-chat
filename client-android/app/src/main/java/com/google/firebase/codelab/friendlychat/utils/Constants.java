@@ -9,6 +9,7 @@ public interface Constants {
     String BASE_URL = "base_url";
     String IDENTITY_TYPE = "firebase_user";
     String PRIVATE_KEY = "private_key_";
+    String MY_CARD_ID = "virgil_card_";
 
     String MESSAGES_CHILD = "messages";
 

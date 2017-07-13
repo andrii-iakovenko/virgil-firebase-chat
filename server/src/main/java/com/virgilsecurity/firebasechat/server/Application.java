@@ -18,11 +18,11 @@ import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.auth.FirebaseCredentials;
 import com.virgilsecurity.sdk.client.VirgilClient;
-import com.virgilsecurity.sdk.client.utils.ConvertionUtils;
 import com.virgilsecurity.sdk.crypto.Crypto;
 import com.virgilsecurity.sdk.crypto.PrivateKey;
 import com.virgilsecurity.sdk.crypto.VirgilCrypto;
-import com.virgilsecurity.sdk.crypto.exception.CryptoException;
+import com.virgilsecurity.sdk.crypto.exceptions.CryptoException;
+import com.virgilsecurity.sdk.utils.ConvertionUtils;
 
 @SpringBootApplication
 public class Application {
@@ -61,7 +61,8 @@ public class Application {
 
 	@Bean
 	@Autowired
-	public PrivateKey appKey(@Value("#{systemProperties['appKey']}") String appKey, @Value("#{systemProperties['appKeyFile']}") String appKeyFileName,
+	public PrivateKey appKey(@Value("#{systemProperties['appKey']}") String appKey,
+			@Value("#{systemProperties['appKeyFile']}") String appKeyFileName,
 			@Value("#{systemProperties['appKeyPwd']}") String appKeyPwd, Crypto crypto) {
 		byte[] keyData = null;
 		if (!StringUtils.isEmpty(appKey)) {
